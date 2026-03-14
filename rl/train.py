@@ -46,9 +46,9 @@ GRPO_DEFAULTS = dict(
     clip_eps=0.2,           # ε in surrogate clipping
     temperature=1.0,        # sampling temperature for rollouts
     max_grad_norm=1.0,
-    num_players=2,
+    num_players=8,
     start_round=1,
-    max_round=5,
+    max_round=6,   # 8 players × 6 cards = 48 ≤ 52; round 7 would need 56
     win_rate_threshold=0.7, # promote to next round when win rate > this
     eval_every=25,
     save_every=100,

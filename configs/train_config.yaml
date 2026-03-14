@@ -15,9 +15,9 @@ temperature: 1.0       # exploration temperature during training
 max_grad_norm: 1.0
 
 # Game settings
-num_players: 2
+num_players: 8         # 8 players, all sharing the same Qwen2.5-0.5B weights
 start_round: 1
-max_round: 5           # rounds 1-5 cover most of the interesting difficulty range
+max_round: 6           # 8 players × 6 cards = 48 ≤ 52 (round 7 would need 56)
 
 # Curriculum: advance to next round when 20-game rolling win rate > threshold
 win_rate_threshold: 0.70

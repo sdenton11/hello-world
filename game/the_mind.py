@@ -85,6 +85,13 @@ class TheMindGame:
 
     def reset(self, round_num: int = 1) -> dict:
         """Start a new round. Returns initial observations per player."""
+        cards_needed = self.num_players * round_num
+        if cards_needed > 52:
+            raise ValueError(
+                f"{self.num_players} players × round {round_num} = {cards_needed} cards, "
+                f"but the deck only has 52. Max round for {self.num_players} players is "
+                f"{52 // self.num_players}."
+            )
         self.round_num = round_num
         self.play_pile = []
         self.result = RoundResult.IN_PROGRESS

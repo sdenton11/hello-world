@@ -1,0 +1,28 @@
+# The Mind — GRPO Training Config
+# Edit this and pass via: python -m rl.train --config configs/train_config.yaml
+# (or just override individual flags on the CLI)
+
+model: "Qwen/Qwen2.5-0.5B-Instruct"   # ~500M params, fits on 8GB GPU
+# model: "Qwen/Qwen2.5-1.5B-Instruct" # better reasoning, needs ~16GB
+
+# GRPO hyperparameters
+group_size: 8          # rollouts per gradient step (more = lower variance, slower)
+num_iterations: 500
+lr: 1e-5
+kl_coef: 0.05          # higher → stay closer to base model
+clip_eps: 0.2
+temperature: 1.0       # exploration temperature during training
+max_grad_norm: 1.0
+
+# Game settings
+num_players: 2
+start_round: 1
+max_round: 5           # rounds 1-5 cover most of the interesting difficulty range
+
+# Curriculum: advance to next round when 20-game rolling win rate > threshold
+win_rate_threshold: 0.70
+
+# Logging / saving
+eval_every: 25
+save_every: 100
+output_dir: "checkpoints"

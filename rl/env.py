@@ -30,10 +30,15 @@ MAX_STEPS_PER_ROUND = 200  # safety cap to prevent infinite loops
 
 @dataclass
 class Trajectory:
-    """Stores one complete round's worth of (prompt, completion, reward) tuples."""
+    """Stores one complete round's worth of (prompt, completion, reward) tuples.
+
+    decision_steps parallels the other lists: entries with the same id share one game timestep.
+    """
+
     prompts: list[str]
     completions: list[str]
     rewards: list[float]
+    decision_steps: list[int]
     success: bool
     round_num: int
     num_players: int
@@ -68,13 +73,14 @@ def sample_action(
     then map it back to PLAY/WAIT.
     """
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    output = model.generate(
-        **inputs,
-        max_new_tokens=4,       # short: "PLAY" or "WAIT"
-        do_sample=True,
-        temperature=temperature,
-        pad_token_id=tokenizer.eos_token_id,
-    )
+    # transformers>=4.44 rejects temperature=0 with do_sample=True (division by zero).
+    gen_kwargs = dict(max_new_tokens=4, pad_token_id=tokenizer.eos_token_id)
+    if temperature is not None and temperature > 0:
+        gen_kwargs["do_sample"] = True
+        gen_kwargs["temperature"] = temperature
+    else:
+        gen_kwargs["do_sample"] = False
+    output = model.generate(**inputs, **gen_kwargs)
     new_tokens = output[0][inputs["input_ids"].shape[1]:]
     completion = tokenizer.decode(new_tokens, skip_special_tokens=True)
     return prompt, completion
@@ -98,6 +104,7 @@ def rollout(
     prompts: list[str] = []
     completions: list[str] = []
     step_rewards: list[float] = []
+    decision_steps: list[int] = []
 
     done = False
     step = 0
@@ -130,12 +137,14 @@ def rollout(
             prompts.append(p)
             completions.append(c)
             step_rewards.append(reward)
+            decision_steps.append(step)
 
     success = game.result.value == "success"
     return Trajectory(
         prompts=prompts,
         completions=completions,
         rewards=step_rewards,
+        decision_steps=decision_steps,
         success=success,
         round_num=round_num,
         num_players=num_players,

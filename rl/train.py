@@ -60,14 +60,26 @@ GRPO_DEFAULTS = dict(
 # Reward shaping
 # ---------------------------------------------------------------------------
 
-def compute_returns(rewards: list[float], gamma: float = 0.99) -> list[float]:
-    """Discounted returns from a list of per-step rewards."""
+def compute_returns(
+    rewards: list[float], decision_steps: list[int], gamma: float = 0.99
+) -> list[float]:
+    """
+    Discounted return per decision. Entries sharing the same game step get the same
+    return-to-go so simultaneous players are not gamma-discounted against each other.
+    """
+    if not rewards:
+        return []
+    step_to_r: dict[int, float] = {}
+    for r, sid in zip(rewards, decision_steps):
+        step_to_r[sid] = r
+    ordered = sorted(step_to_r.keys())
     G = 0.0
-    returns = []
-    for r in reversed(rewards):
+    ret_by_step: dict[int, float] = {}
+    for sid in reversed(ordered):
+        r = step_to_r[sid]
         G = r + gamma * G
-        returns.insert(0, G)
-    return returns
+        ret_by_step[sid] = G
+    return [ret_by_step[sid] for sid in decision_steps]
 
 
 def normalize(values: list[float]) -> list[float]:
@@ -104,7 +116,7 @@ def compute_policy_loss(
     # Collect all trajectory returns and normalize across the group
     all_returns = []
     for traj in trajectories:
-        returns = compute_returns(traj.rewards)
+        returns = compute_returns(traj.rewards, traj.decision_steps)
         all_returns.extend(returns)
     advantages = normalize(all_returns)
 
@@ -113,7 +125,7 @@ def compute_policy_loss(
 
     adv_idx = 0
     for traj in trajectories:
-        traj_returns = compute_returns(traj.rewards)
+        traj_returns = compute_returns(traj.rewards, traj.decision_steps)
         for prompt, completion, _ in zip(traj.prompts, traj.completions, traj_returns):
             adv = advantages[adv_idx]
             adv_idx += 1
@@ -152,8 +164,8 @@ def compute_policy_loss(
             surr2 = ratio.clamp(1 - clip_eps, 1 + clip_eps) * adv_t
             surrogate = -torch.min(surr1, surr2).mean()
 
-            # Approximate KL: KL(old || new) ≈ (log_old - log_new).mean()
-            kl = (comp_old - comp_new).mean()
+            # KL(π_old || π_new) at each position: Σ_a π_old(a) (log π_old(a) − log π_new(a))
+            kl = (comp_old.exp() * (comp_old - comp_new)).sum(dim=-1).mean()
 
             step_loss = surrogate + kl_coef * kl
             total_loss = total_loss + step_loss
@@ -262,6 +274,24 @@ def train(args):
                 f"Win {wins}/{args.group_size} ({win_rate:.0%}) | "
                 f"Loss {loss.item():.4f} | AvgLen {avg_len:.1f}"
             )
+
+        if args.eval_every > 0 and iteration % args.eval_every == 0:
+            model.eval()
+            with torch.no_grad():
+                eval_trajs = batch_rollout(
+                    model=model,
+                    tokenizer=tokenizer,
+                    batch_size=args.group_size,
+                    num_players=args.num_players,
+                    round_num=current_round,
+                    temperature=0.0,
+                )
+            eval_wins = sum(t.success for t in eval_trajs)
+            print(
+                f"  [Eval] greedy {eval_wins}/{len(eval_trajs)} wins "
+                f"({eval_wins / len(eval_trajs):.0%})"
+            )
+            model.train()
 
         if iteration % args.save_every == 0:
             ckpt_path = output_dir / f"iter_{iteration:04d}"
